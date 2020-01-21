@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import threading
+import time
 from PyQt4.QtCore import pyqtSlot, Qt
 from PyQt4.QtGui import *
 from PyQt4 import QtCore, QtGui
@@ -10,73 +12,31 @@ import psutil
 import memprc
 from winappdbg import HexDump, HexInput
 
-
-#global variables
+# global variables
 openpname = None
 scantype = 'Exact Value'
 valuetype = '4bytes'
 hack = None
 
 
-
-a=123#dfayrdydryasd
-'''
-class searchTable(QWidget):
-    def __init__(self, parent=None):
-        QWidget.__init__(self)
-        self.table = QTableWidget(parent)
-        self._mainwin = parent
-        self.__make_table()
-
-
-    def __make_table(self):
-        # self.table.setSelectionBehavior(QTableView.SelectRows)
-        # multiple row 선택 가능
-        self.table.setSelectionMode(QAbstractItemView.SingleSelection)
-        # row, column 갯수 설정해야만 tablewidget 사용할수있다.
-
-
-        self.table.setColumnCount(2)
-        self.table.setRowCount(3)
-
-        # column header 명 설정.
-        self.table.setHorizontalHeaderLabels(["pid", "pname"])
-        self.table.horizontalHeaderItem(0).setTextAlignment(Qt.AlignRight) # header 정렬 방식
-
-
-        for pi in range(0):
-            self.table.setItem(pi, 0, QTableWidgetItem(''))
-            self.table.setItem(pi, 1, QTableWidgetItem(''))
-
-        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-
-
-        #self.table.setCellWidget(1, 3, item_widget)
-        #self.table.cellClicked.connect(self.__mycell_clicked)
-        #mycom.currentTextChanged.connect(self.__mycom_text_changed)
-'''
-
 class myListWidget(QListWidget):
     def itemclick(self, item):
         global maindlg
         global hack
-        print(item.pid,item.pname)
+        print(item.pid, item.pname)
         hack = memprc.Hack(item.pname)
         maindlg.pnamelabel.setText(item.text())
         self.parentWidget().close()
 
 
-
-class popenDialog(QDialog):
+class popenDialog(QDialog, maingui.Ui_popenDialog):
     def __init__(self):
         QDialog.__init__(self)
-        self.setFixedSize(255,190)
-        self.setWindowTitle("select prc")
+        self.setupUi(self)
         self.listwidget = myListWidget(self)
         def get_all_windows():
             def call(hwnd, param):
-               param.append(hwnd)
-
+                param.append(hwnd)
             winds = []
             wg.EnumWindows(call, winds)
             return winds
@@ -98,12 +58,6 @@ class popenDialog(QDialog):
 
         self.listwidget.itemDoubleClicked.connect(self.listwidget.itemclick)
 
-        ''''#self.listwidget.itemDoubleClicked.connect
-        #self.setLayout(QVBoxLayout())
-        #self.twidget = MyTable(self)
-        #self.twidget.setGeometry(QtCore.QRect(0, 0, 200, 200))
-        #self.addWidget(self.textEdit)
-        #self.widget'''
 
 
 class MainWindow(QDialog, maingui.Ui_mainwindow):
@@ -115,12 +69,32 @@ class MainWindow(QDialog, maingui.Ui_mainwindow):
         self.scanbtn.clicked.connect(self.scanBtnClk)
         self.nextscanbtn.clicked.connect(self.nextscanBtnClk)
         self.popenbtn.clicked.connect(self.popenBtnClk)
+        self.t = threading.Thread(target=self.refreshSearchTable, args=([self.searchtablewidget]))
+        self.t.start()
+
+    @staticmethod
+    def refreshSearchTable(tablewidget):
+        while True:
+            allRows = tablewidget.rowCount()
+            if hack and allRows:
+                for row in range(allRows):
+                    if tablewidget.rowCount() != allRows: break
+                    adr = tablewidget.item(row, 0)
+                    adr = int('0x'+str(adr.text()),0)
+                    data,label = hack.read(adr, 4)
+                    ba = bytearray(data)
+                    tablewidget.setItem(row,1, QTableWidgetItem(str(sum([(256 ** i) * ba[i] for i in range(len(ba))]))))
+            time.sleep(1)
+
+
+
+
 
     def scanBtnClk(self):
         if hack == None:  return
         text = str(self.searchtext.toPlainText())
         if text.strip() == '': return
-        self.searchlistwidget.clear()
+        #self.searchlistwidget.clear()
 
         if valuetype == 'byte':
             num = memprc.d2h(int(text), 1)
@@ -132,18 +106,19 @@ class MainWindow(QDialog, maingui.Ui_mainwindow):
             num = memprc.d2h(int(text), 8)
         if valuetype == 'String':
             pass
-            #num = memprc.d2h(int(text), 4)
+            # num = memprc.d2h(int(text), 4)
 
         result = hack.hwnd.search_hexa(num, hack.base_address, hack.last_address)
-
-        cnt = 0
+        datalist = []
         for address, data in result:
-            item = QtGui.QListWidgetItem(self.searchlistwidget)
-            item.setText(HexDump.hexblock(data, address=address))
-            #print HexDump.hexblock(data, address=address)
-            cnt += 1
-        self.searchcntlabel.setText(str(cnt))
-
+            ba = bytearray(data)
+            datalist.append((address,sum([(256**i)*ba[i] for i in range(len(ba))])))
+        self.searchtablewidget.setRowCount(len(datalist))
+        for i in range(len(datalist)):
+            self.searchtablewidget.setItem(i, 0, QTableWidgetItem('%016X'%datalist[i][0]))
+            self.searchtablewidget.setItem(i, 1, QTableWidgetItem(str(datalist[i][1])))
+            self.searchtablewidget.setItem(i, 2, QTableWidgetItem(str(datalist[i][1])))
+        self.searchcntlabel.setText(str(len(datalist)))
 
 
 
@@ -152,15 +127,11 @@ class MainWindow(QDialog, maingui.Ui_mainwindow):
 
     def popenBtnClk(self):
         pod = popenDialog()
-
         pod.exec_()
 
 
-
-
-
-
-app = QApplication(sys.argv)
-maindlg = MainWindow()
-maindlg.show()
-app.exec_()
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    maindlg = MainWindow()
+    maindlg.show()
+    app.exec_()

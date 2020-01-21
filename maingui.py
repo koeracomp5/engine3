@@ -22,9 +22,13 @@ except AttributeError:
     def _translate(context, text, disambig):
         return QtGui.QApplication.translate(context, text, disambig)
 
+class Ui_popenDialog(object):
+    def setupUi(self,mainwindow):
+        self.setFixedSize(255, 190)
+        self.setWindowTitle("select prc")
+
 class Ui_mainwindow(object):
     def setupUi(self, mainwindow):
-
         mainwindow.setObjectName(_fromUtf8("mainwindow"))
         mainwindow.resize(800, 600)
         self.centralwidget = QtGui.QWidget(mainwindow)
@@ -58,11 +62,16 @@ class Ui_mainwindow(object):
         self.selectscroll.setWidgetResizable(True)
         self.selectscroll.setObjectName(_fromUtf8("selectscroll"))
 
-        self.searchlistwidget = QtGui.QListWidget(self)
+        '''self.searchlistwidget = QtGui.QListWidget(self)
         self.searchlistwidget.setGeometry(QtCore.QRect(10, 60, 300, 271))
-        self.searchlistwidget.setObjectName(_fromUtf8("searchlistwidget"))
+        self.searchlistwidget.setObjectName(_fromUtf8("searchlistwidget"))'''
 
-
+        self.searchtablewidget = QtGui.QTableWidget(self)
+        self.searchtablewidget.setGeometry(QtCore.QRect(10, 60, 300, 271))
+        self.searchtablewidget.setObjectName(_fromUtf8("searchtablewidget"))
+        self.searchtablewidget.setColumnCount(3)
+        self.searchtablewidget.setHorizontalHeaderLabels(['address', 'value', 'previous'])
+        self.searchtablewidget.verticalHeader().setVisible(False)
 
 
 
