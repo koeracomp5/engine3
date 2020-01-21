@@ -19,6 +19,7 @@ hack = None
 
 
 
+a=123
 '''
 class searchTable(QWidget):
     def __init__(self, parent=None):
