@@ -15,9 +15,17 @@ class Hack(object):
         self.vaddr_map = self.get_vaddr_map()
         self.memory_dump_db = None
         self.variable_info_db = None
+        self.init_var_info()
 
     def memory_read(self, address, size) :
-        return self.hwnd.read(address, size)
+        try:
+            data = self.hwnd.read(address, size)
+        except WindowsError, e:
+            msg   = "Error reading 0x%08x-0x%08x: %s"
+            msg   = msg % (address, address+size, str(e))
+            print msg
+            return self.hwnd.read(address, size)
+        return data
 
     def get_memory_full_dump_db(self) :
         mem_dump_db = dict()
@@ -78,23 +86,25 @@ class Hack(object):
                 if processName is None:
                     self.running.append((name, process.get_pid()))
                 else:
-                    if name == processName:
+                    if processName in name:
                         return process
 
     def next_scan(self, oper_func) :
         var_db = dict()
         next_full_dump_db = dict()
-        var_size = 4
+        var_size = self.var_size
         if self.variable_info_db == None :
             next_full_dump_db = self.get_memory_full_dump_db()
             for base_addr in self.memory_dump_db.keys() :
                 var_db[base_addr] = []
             for base_addr in self.memory_dump_db.keys() :
+                if self.memory_dump_db[base_addr] == None or next_full_dump_db[base_addr] == None :
+                    continue
                 size = self.vaddr_map[base_addr]
                 offset = 0
                 while offset+var_size < size :
-                    origin_val = struct.unpack("i", self.memory_dump_db[base_addr][offset:offset+var_size])[0]
-                    next_val = struct.unpack("i", next_full_dump_db[base_addr][offset:offset+var_size])[0]
+                    origin_val = self.unpack(self.memory_dump_db[base_addr][offset:offset+var_size])
+                    next_val = self.unpack(next_full_dump_db[base_addr][offset:offset+var_size])
                     if oper_func(origin_val, next_val) :
                         var_db[base_addr].append(offset)
                     offset+=1
@@ -102,10 +112,12 @@ class Hack(object):
             for base_addr in self.variable_info_db.keys() :
                 size = self.vaddr_map[base_addr]
                 next_dump = self.memory_read(base_addr, size)
+                if self.memory_dump_db[base_addr] == None or next_dump == None :
+                    continue
                 var_db_entry = []
                 for offset in self.variable_info_db[base_addr] :
-                    origin_val = struct.unpack("i", self.memory_dump_db[base_addr][offset:offset+var_size])[0]
-                    next_val = struct.unpack("i", next_dump[offset:offset+var_size])[0]
+                    origin_val = self.unpack(self.memory_dump_db[base_addr][offset:offset+var_size])
+                    next_val = self.unpack(next_dump[offset:offset+var_size])
                     if oper_func(origin_val, next_val) :
                         var_db_entry.append(offset)
                 if len(var_db_entry) > 0 :
@@ -114,20 +126,35 @@ class Hack(object):
         self.memory_dump_db = next_full_dump_db
         self.variable_info_db = var_db
 
-    def print_scaned_var_info (self) :
-        var_size = 4
+    def count_scaned_var_info(self) :
         var_cnt = 0
         for base_addr in self.variable_info_db.keys() :
-            for offset in self.variable_info_db[base_addr] :
-                addr = base_addr+offset
-                val = struct.unpack("i", self.memory_dump_db[base_addr][offset:offset+var_size])[0]
-                print "0x%08x -> %d" % (addr, val)
-                var_cnt+=1
+            var_cnt+=len(self.variable_info_db[base_addr])
+        return var_cnt
+
+    def print_scaned_var_info (self) :
+        var_size = self.var_size
+        var_cnt = self.count_scaned_var_info()
+        if var_cnt < 10000 :
+            for base_addr in self.variable_info_db.keys() :
+                for offset in self.variable_info_db[base_addr] :
+                    addr = base_addr+offset
+                    val = self.unpack(self.memory_dump_db[base_addr][offset:offset+var_size])
+                    print "0x%08x -> %d" % (addr, val)
         print "total %d variables scaned" % var_cnt
+
+    def unpack(self, byte_stream) :
+        return struct.unpack(self.data_type, byte_stream)[0]
+
+    def init_var_info(self) :
+        self.var_size = 1
+        self.data_type = "b" # b, i, l, f, d, etc
+
 
 
 def main () :
-    ps = Hack("KakaoTalk.exe")
+    #ps = Hack("KakaoTalk.exe")
+    ps = Hack("xops")
     ps.first_scan()
     cmd_str = raw_input()
     while "fuck" not in cmd_str :
@@ -135,8 +162,11 @@ def main () :
             ps.next_scan(lambda a,b : a<b)
         elif "dec" in cmd_str :
             ps.next_scan(lambda a,b : a>b)
-        else :
+        elif "equal" in cmd_str :
             ps.next_scan(lambda a,b : a==b)
+        elif "match" in cmd_str :
+            target_val = int(cmd_str.split()[-1])
+            ps.next_scan(lambda a, b : b == target_val)
         ps.print_scaned_var_info()
         cmd_str = raw_input()
 
